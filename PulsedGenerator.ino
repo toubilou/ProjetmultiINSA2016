@@ -1,3 +1,5 @@
+ // Defines for In-Out Pins
+ 
   #define bornecondo A0                                                                // Condo voltage
   #define BuzzerShot 2                                                                 // Generator going to shot. Buzzer makes noises. Get Away.
   #define DiodeCharged 3                                                               // Condo is charged. Red diode switches on. Very dangerous state.
@@ -5,24 +7,28 @@
   #define DiodeOK 5                                                                    // Generator Startup. Green diode switches on once user asks for it after generator is put under voltage
   #define DiodeDefault 6                                                               // Default mode is the safe mode. Blue diode switches on. Potentially dangerous state, condo might be under discharge through security resistance. TODO: add a safe mode
 
+// Variables definitions
   int secu =0;
   char incomingByte ='N';
+  // States list typeDef
   enum states {statestart,statedefaut,statecharge,statefincharge,statetir,statesecurity};
   states state;
+  // fonctionals modes typeDef
   enum modes {manual, automatic};
   modes mode;
   int autocompteur;
 
   
  
-int problem() {
+int problem() // Poll serial port for 'P' char and return 1 else return 0
+{
   if (Serial.available() != 0) {
     incomingByte = Serial.read();
     Serial.println(incomingByte);
     if (incomingByte =='P') {return 1 ;}
-    else return 0;
+    else return 0; // Char is not 'P'
   }
-  else return 0;
+  else return 0; // No char received
 }
 
 
@@ -52,9 +58,10 @@ void demarrage ()                                                               
 
 
 
-int tensioncondo ()                                                                    // Int variable of the condo voltage. Between 0 for 0V and 1023 for 5V
+int tensioncondo ()                               // Int variable of the condo voltage. Between 0 for 0V and 1023 for 5V
 {
   int tensionlue = analogRead(bornecondo);
+  // Scaling to be done here ?
   Serial.println(tensionlue);
   return tensionlue;
 }
@@ -63,6 +70,7 @@ int tensioncondo ()                                                             
 
 int defaut() {
   
+  // Default states for Outputs
   digitalWrite(BuzzerShot, LOW);
   digitalWrite(DiodeCharged, LOW);
   digitalWrite(DiodeCharging, LOW);
@@ -70,6 +78,7 @@ int defaut() {
   digitalWrite(DiodeDefault, HIGH);
   
   delay(300);
+  // ask for a restart after an interrupt
   incomingByte = 'N';
   while ((incomingByte != 'A') and (incomingByte != 'M') and (incomingByte != 'P')) {                                                        // Check incommming char
     Serial.println("Etat defaut, choisissez un Mode, Manuel en tapant M, ou Automatique en tapant A");                                 // Incorrect char typed or first iteration
@@ -79,6 +88,7 @@ int defaut() {
     incomingByte = Serial.read();
   }
   
+  // Switch for Mode choice
   switch (incomingByte) {
     case 'P': return 1; break;
     case 'M': mode=manual; return 0; break;
@@ -91,25 +101,28 @@ int defaut() {
 
 
 
-int charge ()                                                                         // Condo charge. Condo maximum voltage value allowed for safe mode can be changed here.
+int charge ()                       // Condo charge. Condo maximum voltage value allowed for safe mode can be changed here.
 {
-  int tensionconsigne = 1000;                                                          // Condo maximum voltage variable.
+  int tensionconsigne = 1000;       // Condo maximum voltage variable. TODO put it in a define
   incomingByte='N';
-  if (mode==automatic) {incomingByte = 'C';}
+  if (mode==automatic) {incomingByte = 'C';} // TODO not elegant fix this
   
-  while ((incomingByte != 'C') and (incomingByte != 'P')) {                                                        // Asks user to enter "C" to begin charge. Charge then begins.
+  while ((incomingByte != 'C') and (incomingByte != 'P')) 
+  {                                                        // Asks user to enter "C" to begin charge. Charge then begins.
     Serial.println("Si vous voulez charger tapez C");                       
     while (Serial.available() == 0) {delay(300);}
     
     incomingByte = Serial.read();
     if (incomingByte==1){return 1;}                                             
   }
+  
   digitalWrite(DiodeDefault, LOW);                                                     // Switch off default mode diode
  
   Serial.println("Attention, le Condensateur commence à se charger");
   digitalWrite(DiodeCharging, HIGH);                                                   // Switch on Charging diode: orange
   while (tensioncondo() < tensionconsigne) {                                           // Display condo voltage until it's bigger than Max Value
     delay(100);
+    // poll for a charge interrupt during the charge
     if (problem()==1) {return 1;}
     
   }
@@ -122,7 +135,7 @@ int charge ()                                                                   
 
 
 
-int fincharge ()                                                                      // Dangerous state. Condo is charged. This functions asks User if he wants to shot. He has 10 seconds to decide or generator will switch to safe mode.
+int fincharge () // Dangerous state. Condo is charged. This functions asks User if he wants to shot. He has 10 seconds to decide or generator will switch to safe mode.
 {
   incomingByte = 'N';
   int compteur = 0;
@@ -175,8 +188,10 @@ int tir() {                                                                     
 
 
 
-void security(){
-
+void security()
+{
+  // TODO put all the outpout to a safe position
+  
     Serial.println("securité");                                                        // Welcome message
   incomingByte = 'N';
   while (incomingByte != 'Y') {                                                        // Check incommming char
