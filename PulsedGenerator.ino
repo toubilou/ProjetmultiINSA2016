@@ -1,4 +1,9 @@
-  // include the library code:
+  // Program made by 4th year engineering student Deleau Clement in 2016
+//  Year project of INSA. Call 0643444198 if problem occurs and YOU ABSOLUTELY HAVE NO OTHER CHOICE BUT CALLING ME FOR HELP (my cellphone)
+ 
+ 
+ 
+ // include the library code:
 #include <LiquidCrystal.h>
 
 // initialize the library with the numbers of the interface pins
@@ -24,7 +29,8 @@ LiquidCrystal lcd(12, 11, 10, 9, 8, 7);                                         
   
   int autocompteur;                                                                                                 //Variable that indicates how many times the machine will charge/shot. Goes from 5 to 0 each times automatic mode is selected.
   float tensionconsigne = 350.0;                                                                                    //Variable that indicates at which voltage the condo will charge before being able to shot.
-   
+ 
+  int vrefopto;                                                                                                     //Integer between 0 and 1023 that gives the reference voltage used for measures by optocouplers. Vref is supposed to be around 400 but is re-calibrated at each start
   boolean button1,button2,button3,button4;                                                                          //Numerical Boolean variables of the 4 buttons used to control the machine. First 2 buttons are used to select features. Button 3 is used to shot only. Button 4 is used for Security Only. Can be pushed any time
   float voltage;                                                                                                    //Voltage variable that is used to display time averaged condovoltage. (measure optocouplers are not really accurates)
 
@@ -45,13 +51,24 @@ void buttonsreset() {                                                           
 float condovoltage ()                                                                                               //Integer variable of the condo voltage.
 {
   int tensionlue = analogRead(condoterminal);                                                                       //Reads voltage on condoterminal and attributes to numerical variable tensionlue a value(0 for 0 Volt and 1023 for 5 volts)
-  lcd.setCursor(0,1);
-  float realtensionlue=(370.0/200.0)*float(tensionlue-252);                                                          //Functions that translates value readed to the real value of the condo. Optocouplers actually give a value of 252 for 0 volts (due to Vref value of optocouplers) and are linear to a 370/200*x function. Calibrations were made here to determinates these values.
-  lcd.print(realtensionlue,1);                                                                                      //Display the translated voltage readed.
+  float realtensionlue=1.2291*float(tensionlue-vrefopto);                                                          //Functions that translates value readed to the real value of the condo. Optocouplers actually give a value of 252 for 0 volts (due to Vref value of optocouplers) and are linear to a 370/200*x function. Calibrations were made here to determinates these values.                
   return (realtensionlue);
 }
 
+void calibrationvref(){ 
+  int n=0;
+  vrefopto =0;
+  while (n<=50){
 
+  vrefopto = vrefopto + analogRead(condoterminal);
+  n=n+1;
+  lcd.setCursor(0, 1);
+  lcd.print ("vref ");
+  lcd.print(vrefopto);
+  delay(40);}
+  vrefopto=vrefopto/50;                                                                                             //not 51 but 50 cuz integer type n shit no time to explain
+  
+}
 void choicemaxvoltage()                                                                                             //Function used to modify tensionconsigne float variable using lcd screen and buttons 1 and 2. Happens when the machine is starting.
 {                                                                                           
   buttonsreset();   
@@ -59,14 +76,14 @@ void choicemaxvoltage()                                                         
   lcd.print("set max voltage");                                                                                     //Display for 1 second the need to set max voltage.
   delay(1000);
   lcd.clear();
+  lcd.print("1=>ok, 2=>change"); 
   while (button1==HIGH) {                                                                                           
-  buttonsreset;
-  lcd.print("1=>ok, 2=>change");                                                                                    //Display Instructions to set max voltage. 
+  buttonsreset;                                                                                    //Display Instructions to set max voltage. 
   lcd.setCursor(0, 1);
   lcd.print(tensionconsigne,1);                                                                                     //Display Tensionconsigne to be saved.
   readbuttons();
   if (button2==LOW){                                                                                                //Changes displayed Tensionconsigne when button 2 is pressed. Button 1 is pressed to save the set up.
-    if (tensionconsigne>=360) {
+    if (tensionconsigne>=350) {
       tensionconsigne=0;
     }
     tensionconsigne=tensionconsigne+10;                                                                         
@@ -93,16 +110,15 @@ void demarrage ()                                                               
     
   lcd.clear();
   lcd.print("Starting...");
-  delay(1000);
-  
-  choicemaxvoltage();                                                                                               //Calls max voltage set up
+  calibrationvref();                                                                                               //Calls max voltage set up
   digitalWrite(securityrelay, HIGH);                                                                                //Security relay is closed (current can flow between Diode Bridge and condo). Will be opened only on security state.
+  delay (100);
 }
 
 
 
 int defaut() {                                                                                                      //Function working at Default state of the machine.
-  
+  choicemaxvoltage();
   digitalWrite(shot, LOW);                                                        
   digitalWrite(charging, LOW);                                                                                      //There is no current going throu charging optocouplers or thyristor.
 
@@ -150,13 +166,15 @@ int charge ()                                                                   
   lcd.print("charging");                                                                                          //Displays that the condos are charging. 
   
   if (mode==automatic){lcd.setCursor(10,0); lcd.print(autocompteur);}                                             //If automatic mode was selected, it displays the number of charge/shot circles that are still going to be done. Goes from 5 to 1
-  
-  digitalWrite(charging, HIGH);                                                 
-  delay(1000);
   voltage=0.0;
+  digitalWrite(charging, HIGH);                                                
+  delay(500);
+  
   while (voltage < tensionconsigne) {                                                                             //Functions that average a bit the voltage readed and displays each 0.2seconds the result in volts. (Displays a value going from 0 to tensionconsigne seted up)
-    voltage=(condovoltage()/2.0)+voltage/2.0;
-    delay(200);
+    voltage=condovoltage()*0.01+voltage*0.99;
+    lcd.setCursor(0,1);
+    lcd.print(voltage,1);  
+    delay(20);
     button4=digitalRead(button4terminal);
     if (button4==LOW) { return 1; }
     
@@ -171,39 +189,39 @@ int charge ()                                                                   
 
 
 
-int fincharge ()                                                                                                // Dangerous state. Condo is charged. This functions asks User if he wants to shot. He has 10 seconds to decide or generator will switch to safe mode. This state is called only if mode is manual.
+int fincharge ()                                                                                                 // Dangerous state. Condo is charged. This functions asks User if he wants to shot. He has 10 seconds to decide or generator will switch to safe mode. This state is called only if mode is manual.
 {
 
   int compteur = 0;
   
   lcd.clear();
-  lcd.print("Charged: Press 3 to shoot");                                                                       //Displays Instructions to close thyristor and let current flow through the coil.
+  lcd.print("Charged: Press 3 to shoot");                                                                        //Displays Instructions to close thyristor and let current flow through the coil.
 
 
   
   
-  while ((button3==HIGH) and compteur <= 100 and (button4==HIGH))                                               //Button 3 can be pressed on to allow shoot. (Machine will go to shot state) or security button can be pressed to call security state.
+  while ((button3==HIGH) and compteur <= 100 and (button4==HIGH))                                                //Button 3 can be pressed on to allow shoot. (Machine will go to shot state) or security button can be pressed to call security state.
   {
       readbuttons();
       delay(100);                                                                     
-      compteur = compteur + 1;                                                                                  //a compteur is used and allow the charged state to be on during 10 seconds. If no buttons are pressed, il will automatically go to security mode.
-      lcd.setCursor(0,1);                                                                                       //Displays the compteur on lcd screen, going from 10.0 seconds to 0.
+      compteur = compteur + 1;                                                                                   //a compteur is used and allow the charged state to be on during 10 seconds. If no buttons are pressed, il will automatically go to security mode.
+      lcd.setCursor(0,1);                                                                                        //Displays the compteur on lcd screen, going from 10.0 seconds to 0.
       lcd.print(100-compteur);
     }
    
   
-  if (compteur >= 100) {return 2;}                                                                             // if countdown is checked, goes to security mode.
+  if (compteur >= 100) {return 2;}                                                                              // if countdown is checked, goes to security mode.
   if (button4==LOW) { return 1;}
   if (button3==LOW) { return 0;}
 }
 
 
 
-int tir() {                                                                                                   // Shoot mode: condo is going to shot. Get away.
+int tir() {                                                                                                    // Shoot mode: condo is going to shot. Get away.
   lcd.clear();
-  lcd.print("SHOOOOT!!!");                                                                                    //Lcd displays instructions to get away, condo is shooting.
-  digitalWrite(2, HIGH);                                                                                      //Thyristor closes for 0.5 seconds, letting current flow.
-  delay(500);
+  lcd.print("SHOOOOT!!!");                                                                                     //Lcd displays instructions to get away, condo is shooting.
+  digitalWrite(2, HIGH);                                                                                       //Thyristor closes for 0.5 seconds, letting current flow.
+  delay(500); 
   digitalWrite(2, LOW);
   return 0;
 }
@@ -215,7 +233,7 @@ int tir() {                                                                     
 
 
 
-void security(){                                                                                             //Security state function. Every relay is opened, and mecanical relay output is connedted to ground, allowing condo to discharge through charging resistance. ( and also a bit through measure dividing bridge)
+void security(){                                                                                              //Security state function. Every relay is opened, and mecanical relay output is connedted to ground, allowing condo to discharge through charging resistance. ( and also a bit through measure dividing bridge)
   
   digitalWrite(shot, LOW);
   digitalWrite(charging,LOW);
@@ -225,12 +243,12 @@ void security(){                                                                
     lcd.clear();
     lcd.print("Security");
     lcd.setCursor(0,1);
-    lcd.print("press 1 to leave");                                                                          //Displays Instructions to leave Security mode: Press button 1.
+    lcd.print("press 1 to leave");                                                                           //Displays Instructions to leave Security mode: Press button 1.
   while (button1==HIGH) {                                                       
       readbuttons();
       delay(100);                                                                      
     }
-   digitalWrite(securityrelay, HIGH);                                                                       //Mecanical relay state can be modified only at the start of the machine and in security state.
+   digitalWrite(securityrelay, HIGH);                                                                        //Mecanical relay state can be modified only at the start of the machine and in security state.
   }
  
 
@@ -242,34 +260,34 @@ void setup()
 {
   lcd.begin(16, 3);
 // set pins as input  
-  pinMode(condoterminal, INPUT);                                                                           //Terminal A0 on Arduino is used to measure condo voltage
-  pinMode(button1terminal,INPUT);                                                                          //Terminal A1 on Arduino is used to measure button1 state
-  pinMode(button2terminal,INPUT);                                                                          //Terminal 6 on Arduino is used to measure button2state
-  pinMode(button3terminal,INPUT);                                                                          //Terminal A3 on Arduino is used to measure button3 state
-  pinMode(button4terminal,INPUT);                                                                          //Terminal 3 on Arduino is used to measure button4 state
+  pinMode(condoterminal, INPUT);                                                                            //Terminal A0 on Arduino is used to measure condo voltage
+  pinMode(button1terminal,INPUT);                                                                           //Terminal A1 on Arduino is used to measure button1 state
+  pinMode(button2terminal,INPUT);                                                                           //Terminal 6 on Arduino is used to measure button2state
+  pinMode(button3terminal,INPUT);                                                                           //Terminal A3 on Arduino is used to measure button3 state
+  pinMode(button4terminal,INPUT);                                                                           //Terminal 3 on Arduino is used to measure button4 state
 // set pins as output
-  pinMode(shot, OUTPUT);                                                                                   //Terminal 2 on Arduino is used to control shooter Thyristor
-  pinMode(charging, OUTPUT);                                                                               //Terminal 1 on Arduino is used to control charging optocoupler relays
-  pinMode(securityrelay,OUTPUT);                                                                           //Terminal 4 on Arduino is used to control security relay
+  pinMode(shot, OUTPUT);                                                                                    //Terminal 2 on Arduino is used to control shooter Thyristor
+  pinMode(charging, OUTPUT);                                                                                //Terminal 1 on Arduino is used to control charging optocoupler relays
+  pinMode(securityrelay,OUTPUT);                                                                            //Terminal 4 on Arduino is used to control security relay
  
-  state=statestart;                                                                                        //First state of th machine is Statestart.
+  state=statestart;                                                                                         //First state of th machine is Statestart.
 }
 
-void loop()                                                                                                //Loop function that begins with Statestart and switches states according to the presentstate and the answer of the machine. It can be used to establish State diagram.
+void loop()                                                                                                 //Loop function that begins with Statestart and switches states according to the presentstate and the answer of the machine. It can be used to establish State diagram.
 {
  switch ( state)
  {
-  case statestart:                                                                                         //First state statestart calls function demarrage, and goes to statedefaut once choicemaxvoltage is set up. Loading features can be added in function demarrage.
+  case statestart:                                                                                          //First state statestart calls function demarrage, and goes to statedefaut once choicemaxvoltage is set up. Loading features can be added in function demarrage.
     demarrage();
     state=statedefaut;
     
-  case statedefaut:                                                                                        //From here, security state can be called Anytime in any state. Default state asks user to chose charging mode and then goes to charge state.
+  case statedefaut:                                                                                         //From here, security state can be called Anytime in any state. Default state asks user to chose charging mode and then goes to charge state.
     switch (defaut()) {
     case 0: state=statecharge; break;
     case 1: state=statesecurity; break;}
     break;
     
-  case statecharge:                                                                                        //Statecharge is the charging mode. Condo is charging and lcd screens displays condo voltage. The charge begins automatically when automatic mode was selected.
+  case statecharge:                                                                                         //Statecharge is the charging mode. Condo is charging and lcd screens displays condo voltage. The charge begins automatically when automatic mode was selected.
      switch (charge()) {
       case 0: switch (mode) {
         case manual:state=statefincharge;break;
@@ -278,7 +296,7 @@ void loop()                                                                     
       case 1: state=statesecurity;break;      }                                
     break;
     
-  case statefincharge:                                                                                     //statefincharge is a state that can be on only when condo is charged to tensionconsigne, and if manual mode was selected. It gives 10seconds to the user to order a shoot.
+  case statefincharge:                                                                                      //statefincharge is a state that can be on only when condo is charged to tensionconsigne, and if manual mode was selected. It gives 10seconds to the user to order a shoot.
     switch (fincharge()) {                                                      
       case 0: state=statetir; break;
       case 1: state=statesecurity; break;
@@ -286,7 +304,7 @@ void loop()                                                                     
     }
     break;
     
-  case statetir:                                                                                          //Shooting state. Lets current flow through coil. If automatic mode was selected, another charge will begin automatically until 5 charges were executed. Then, goes to default state and waits for instructions.
+  case statetir:                                                                                           //Shooting state. Lets current flow through coil. If automatic mode was selected, another charge will begin automatically until 5 charges were executed. Then, goes to default state and waits for instructions.
     switch (tir()) {
       case 0: switch(mode) 
       { case manual: state=statedefaut; break;
@@ -296,7 +314,7 @@ void loop()                                                                     
     }
     break;
     
-  case statesecurity:                                                                                     //Security state. If the condo was charged when security state was called, it will discharge quickly (~15sec). This state cuts currents everywhere and can be called anytime.
+  case statesecurity:                                                                                      //Security state. If the condo was charged when security state was called, it will discharge quickly (~15sec). This state cuts currents everywhere and can be called anytime.
     security();
     state=statedefaut;
     break;
